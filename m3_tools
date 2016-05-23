@@ -1,0 +1,161 @@
+#!/usr/bin/perl
+use 5.010;
+
+say <<INIT;
+*************************************************************
+*
+*                     M3分辨率修改工具
+*               作者:cgi.net loveme1314\@gmail.com
+*                          2016/5
+*************************************************************
+INIT
+
+my $boot_dir      = '/boot/bananapi/bpi-m3/linux/';
+my $boot_filename = 'uEnv.txt';
+
+#output_type  (0:none; 1:lcd; 2:tv; 3:hdmi; 4:vga)
+my $output_type = 3;
+
+#output_mode  (used for tv/hdmi output, 0:480i 1:576i 2:480p 3:576p 4:720p50 5:720p60 6:1080i50 7:1080i60 8:1080p24 9:1080p50 10:1080p60 11:pal 14:ntsc)
+my $output_mode = 9;
+
+select_type();
+finish();
+
+sub select_type {
+    print <<SELECT;
+0:无
+1:LCD
+2:TV
+3:HDMI 1.4
+4:VGA
+SELECT
+
+    print STDERR "请选择输出设备类型: ";
+    $output_type = <>;
+    chomp($output_type);
+    if ( $output_type < 0 || $output_type > 4 ) {
+        say STDERR "类型错误,请重新选择";
+        return select_type();
+    }
+    if    ( $output_type == 0 ) { exit; }
+    elsif ( $output_type == 1 ) { exit; lcd_mode(); }
+    elsif ( $output_type == 2 ) { tv_mode() }
+    elsif ( $output_type == 3 ) { hdmi_mode() }
+    else                        { exit; vga_mode() }
+
+}
+
+sub lcd_mode { }
+
+sub tv_mode {
+    print <<TVMODE;
+0: 480i
+1: 576i
+2: 480p
+3: 576p
+4: 720p  (50HZ)
+5: 720p  (60HZ 推荐)
+6: 1080i (50HZ)
+7: 1080i (60HZ)
+8: 1080p (24HZ)
+9: 1080p (50HZ 推荐)
+10:1080P (60HZ 不推荐)
+11:PAL
+14:NTSC
+TVMODE
+    print STDERR "请选择合适的分辨率: ";
+    $output_mode = <>;
+    chomp($output_mode);
+    if ( $output_mode < 0 || $output_mode > 14 ) {
+        print STDERR "分辨率错误，请重新选择";
+        return tv_mode();
+    }
+
+}
+
+sub hdmi_mode {
+    print <<HDMIMODE;
+0: 480i
+1: 576i
+2: 480p
+3: 576p
+4: 720p  (50HZ)
+5: 720p  (60HZ 推荐)
+6: 1080i (50HZ)
+7: 1080i (60HZ)
+8: 1080p (24HZ)
+9: 1080p (50HZ 推荐)
+10:1080P (60HZ 不推荐)
+HDMIMODE
+    print STDERR "请选择合适的分辨率: ";
+    $output_mode = <>;
+    chomp($output_mode);
+    if ( $output_mode < 0 || $output_mode > 10 ) {
+        say STDERR "分辨率错误，请重新选择";
+        return ghdmi_mode();
+    }
+
+}
+
+sub vga_mode { }
+
+sub finish {
+
+    my %types = (
+        0 => '无',
+        1 => 'LCD',
+        2 => 'TV',
+        3 => 'HDMI 1.4',
+        4 => 'VGA'
+    );
+    my %modes = (
+        0  => '480i',
+        1  => '576i',
+        2  => '480p',
+        3  => '576p',
+        4  => '720p  (50HZ)',
+        5  => '720p  (60HZ)',
+        6  => '1080i (50HZ)',
+        7  => '1080i (60HZ)',
+        8  => '1080p (24HZ)',
+        9  => '1080p (50HZ)',
+        10 => '1080P (60HZ)',
+        11 => 'PAL',
+        14 => 'NTSC'
+    );
+    printf STDERR
+      "你选择的设备是: %s , 分辨率是: %s. 是否确认? (Y/N) \n",
+      $types{$output_type}, $modes{$output_mode};
+    my $confirm = <>;
+    chomp($confirm);
+    if ( !( $confirm =~ /Y|y/ ) ) {
+        return select_type();
+    }
+
+    my $out_tmple = <<'EOF';
+bpi=bananapi
+board=bpi-m3
+chip=a83t
+service=linux
+kernel=uImage
+scrip=script.bin
+ahello=echo Banaan Pi ${board} chip: $chip Service: $service
+aboot=if fatload $device $partition 0x43100000 ${bpi}/berryboot.img; then bootm 0x48000000 0x43100000; else bootm 0x48000000; fi
+aload_script=fatload $device $partition 0x43000000 ${bpi}/${board}/${service}/${script}
+aload_kernel=fatload $device $partition 0x48000000 ${bpi}/${board}/${service}/${kernel}
+uenvcmd=run ahello aload_script aload_kernel aboot
+EOF
+
+    my $display_params =
+      sprintf
+'bootargs=enforcing=1 console=ttyS0,115200 console=tty1 root=/dev/mmcblk0p2 rootwait init=/init vmalloc=384M ion_cma_list="120m,176m,512m" loglevel=8 bootmenutimeout=10 datadev=mmcblk0p2 disp.screen0_output_type=%d disp.screen0_output_mode=%d disp.screen1_output_type=%d disp.screen1_output_mode=%d',
+      $output_type, $output_mode, $output_type, $output_mode;
+
+    open BOOT, '>', $boot_dir . $boot_filename
+      || die '系统错误,请检查是否是root用户';
+    print BOOT $out_tmple . $display_params;
+    close BOOT;
+
+    say '修改完成,手动重启设备后将会生效.';
+}
